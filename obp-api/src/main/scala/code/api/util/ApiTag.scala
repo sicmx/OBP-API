@@ -61,7 +61,12 @@ object ApiTag {
   val apiTagWebUiProps = ResourceDocTag("WebUi-Props")
 
   // To mark the Berlin Group APIs suggested order of implementation
-  val apiTagBerlinGroupAisA = ResourceDocTag("Berlin-Group-AIS-A")
+  val apiTagBerlinGroupM = ResourceDocTag("Berlin-Group-M")
+  
+  //PSD2 Tags.
+  val apiTagPSD2AIS=ResourceDocTag("Account Information Service (AIS)")
+  val apiTagPSD2PIIS=ResourceDocTag("Confirmation of Funds Service (PIIS)")
+  val apiTagPSD2PIS=ResourceDocTag("Payment Initiation Service (PIS)")
 
   
   //Note: the followings are for the code generator -- UKOpenBankingV3.1.0

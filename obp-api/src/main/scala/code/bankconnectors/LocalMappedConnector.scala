@@ -206,7 +206,7 @@ object LocalMappedConnector extends Connector with MdcLoggable {
   }
   
 
-  override def getBanksLegacy(callContext: Option[CallContext]) = saveConnectorMetric {
+  override def getBanksLegacy(callContext: Option[CallContext]): Box[(List[MappedBank], Option[CallContext])] = saveConnectorMetric {
      Full(MappedBank
         .findAll()
         .map(
@@ -403,7 +403,28 @@ object LocalMappedConnector extends Connector with MdcLoggable {
     val accountAndCallcontext = getBankAccountLegacy(bankId : BankId, accountId : AccountId, callContext: Option[CallContext])
     (accountAndCallcontext.map(_._1), accountAndCallcontext.map(_._2).getOrElse(callContext))
   }
-  
+
+  override def getBankAccountByIban(iban : String, callContext: Option[CallContext]) : OBPReturnType[Box[BankAccount]]= Future
+  {
+    (MappedBankAccount
+      .find(By(MappedBankAccount.accountIban, iban))
+      .map(
+        account =>
+          account
+            .mAccountRoutingScheme(APIUtil.ValueOrOBP(account.accountRoutingScheme))
+            .mAccountRoutingAddress(APIUtil.ValueOrOBPId(account.accountRoutingAddress, account.accountId.value))
+      ), callContext)
+  }
+  override def getBankAccountByRouting(scheme : String, address : String, callContext: Option[CallContext]) : Box[(BankAccount, Option[CallContext])]= 
+    (MappedBankAccount
+      .find(By(MappedBankAccount.mAccountRoutingScheme, scheme), By(MappedBankAccount.mAccountRoutingAddress, address))
+      .map(
+        account =>
+          account
+            .mAccountRoutingScheme(APIUtil.ValueOrOBP(account.accountRoutingScheme))
+            .mAccountRoutingAddress(APIUtil.ValueOrOBPId(account.accountRoutingAddress, account.accountId.value))
+      )).map(a => (a, callContext))
+    
   def getBankAccountCommon(bankId: BankId, accountId: AccountId, callContext: Option[CallContext]) = {
     MappedBankAccount
       .find(By(MappedBankAccount.bank, bankId.value),

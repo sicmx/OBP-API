@@ -50,7 +50,7 @@ class WebUiProps extends WebUiPropsT with LongKeyedMapper[WebUiProps] with IdPK 
 
   object WebUiPropsId extends MappedUUID(this)
   object Name extends MappedString(this, 255)
-  object Value extends MappedString(this, 255)
+  object Value extends MappedText(this)
 
   override def webUiPropsId: Option[String] = Option(WebUiPropsId.get)
   override def name: String = Name.get

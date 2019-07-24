@@ -34,7 +34,7 @@ import code.accountattribute.MappedAccountAttribute
 import code.accountholders.MapperAccountHolders
 import code.actorsystem.ObpActorSystem
 import code.api.Constant._
-import code.api.ResourceDocs1_4_0.ResourceDocs300.ResourceDocs310
+import code.api.ResourceDocs1_4_0.ResourceDocs300.{ResourceDocs310, ResourceDocs400}
 import code.api.ResourceDocs1_4_0._
 import code.api._
 import code.api.builder.APIBuilder_Connector
@@ -53,6 +53,7 @@ import code.crm.MappedCrmEvent
 import code.customer.internalMapping.MappedCustomerIDMapping
 import code.customer.{MappedCustomer, MappedCustomerMessage}
 import code.customeraddress.MappedCustomerAddress
+import code.database.authorisation.Authorisation
 import code.entitlement.MappedEntitlement
 import code.entitlementrequest.MappedEntitlementRequest
 import code.fx.{MappedCurrency, MappedFXRate}
@@ -287,6 +288,7 @@ class Boot extends MdcLoggable {
     enableVersionIfAllowed(ApiVersion.v2_2_0)
     enableVersionIfAllowed(ApiVersion.v3_0_0)
     enableVersionIfAllowed(ApiVersion.v3_1_0)
+    enableVersionIfAllowed(ApiVersion.v4_0_0)
     enableVersionIfAllowed(ApiVersion.apiBuilder)
 
     // TODO Wrap these with enableVersionIfAllowed as well
@@ -306,6 +308,7 @@ class Boot extends MdcLoggable {
     LiftRules.statelessDispatch.append(ResourceDocs220)
     LiftRules.statelessDispatch.append(ResourceDocs300)
     LiftRules.statelessDispatch.append(ResourceDocs310)
+    LiftRules.statelessDispatch.append(ResourceDocs400)
     ////////////////////////////////////////////////////
 
 
@@ -377,9 +380,12 @@ class Boot extends MdcLoggable {
           Menu.i("Consumer Admin") / "admin" / "consumers" >> Admin.loginFirst >> LocGroup("admin")
           	submenus(Consumer.menus : _*),
           Menu("Consumer Registration", "Get API Key") / "consumer-registration" >> AuthUser.loginFirst,
+
+          Menu("Validate OTP", "Validate OTP") / "otp" >> AuthUser.loginFirst,
           // Menu.i("Metrics") / "metrics", //TODO: allow this page once we can make the account number anonymous in the URL
           Menu.i("OAuth") / "oauth" / "authorize", //OAuth authorization page
-          OAuthWorkedThanks.menu //OAuth thanks page that will do the redirect
+          OAuthWorkedThanks.menu, //OAuth thanks page that will do the redirect
+          Menu.i("INTRODUCTION") / "introduction"
     ) ++ accountCreation ++ Admin.menus
 
     def sitemapMutators = AuthUser.sitemapMutator
@@ -625,5 +631,6 @@ object ToSchemify {
     MigrationScriptLog,
     MethodRouting,
     WebUiProps,
+    Authorisation,
   )++ APIBuilder_Connector.allAPIBuilderModels
 }

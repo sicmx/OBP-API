@@ -300,7 +300,7 @@ case class ModeratedCoreAccountsJsonV300(
   accounts: List[ModeratedCoreAccountJsonV300]
 )
 
-case class ElasticSearchJSON(query: ElasticSearchQuery)
+case class ElasticSearchJsonV300(query: ElasticSearchQuery)
 case class ElasticSearchQuery(match_all: EmptyElasticSearch)
 case class EmptyElasticSearch(none:Option[String] = None)
 
@@ -511,8 +511,8 @@ object JSONFactory300{
     GlossaryItemJsonV300(
       title = glossaryItem.title,
       description = GlossaryDescriptionJsonV300 (
-        markdown = glossaryItem.description.stripMargin, //.replaceAll("\n", ""),
-        html = PegdownOptions.convertPegdownToHtmlTweaked(glossaryItem.description.stripMargin)// .replaceAll("\n", "")
+        markdown = glossaryItem.description().stripMargin, //.replaceAll("\n", ""),
+        html = PegdownOptions.convertPegdownToHtmlTweaked(glossaryItem.description()) // .replaceAll("\n", "")
       )
     )
   }

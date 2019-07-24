@@ -269,6 +269,9 @@ trait Connector extends MdcLoggable with CustomJsonFormats{
 
   //This one return the Future.
   def getBankAccount(bankId : BankId, accountId : AccountId, callContext: Option[CallContext]) : OBPReturnType[Box[BankAccount]]= Future{(Failure(setUnimplementedError),callContext)}
+  
+  def getBankAccountByIban(iban : String, callContext: Option[CallContext]) : OBPReturnType[Box[BankAccount]]= Future{(Failure(setUnimplementedError),callContext)}
+  def getBankAccountByRouting(scheme : String, address : String, callContext: Option[CallContext]) : Box[(BankAccount, Option[CallContext])]= Failure(setUnimplementedError)
 
   def getBankAccounts(bankIdAccountIds: List[BankIdAccountId], callContext: Option[CallContext]) : Future[Box[List[BankAccount]]]= Future{Failure(setUnimplementedError)}
 
@@ -1082,6 +1085,29 @@ trait Connector extends MdcLoggable with CustomJsonFormats{
           )
         }yield{
           (transactionId,callContext)
+        }
+        case sepa_credit_transfers => for{
+
+          toSepaCreditTransfers <- NewStyle.function.tryons(s"$TransactionRequestDetailsExtractException It can not extract to $TransactionRequestBodySandBoxTanJSON ", 400, callContext){
+            body.to_sepa_credit_transfers.get
+          }
+          toAccountIban = toSepaCreditTransfers.creditorAccount.iban
+          (toAccount, callContext) <- NewStyle.function.getBankAccountByIban(toAccountIban, callContext)
+          (createdTransactionId, callContext) <- NewStyle.function.makePaymentv210(
+            fromAccount,
+            toAccount,
+            TransactionRequestCommonBodyJSONCommons(
+              toSepaCreditTransfers.instructedAmount,
+              ""
+            ),
+            BigDecimal(toSepaCreditTransfers.instructedAmount.amount),
+            "", //This is empty for BerlinGroup sepa_credit_transfers type now.
+            TransactionRequestType(transactionRequestType),
+            transactionRequest.charge_policy,
+            callContext
+          )
+        }yield{
+          (createdTransactionId,callContext)
         }
         case transactionRequestType => Future((throw new Exception(s"${InvalidTransactionRequestType}: '${transactionRequestType}'. Not supported in this version.")), callContext)
       }

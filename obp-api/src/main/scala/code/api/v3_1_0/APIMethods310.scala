@@ -713,8 +713,8 @@ trait APIMethods310 {
         InvalidISOCurrencyCode,
         UnknownError
       ),
-      Catalogs(Core, notPSD2, OBWG),
-      apiTagAccount :: apiTagNewStyle :: Nil)
+      Catalogs(Core, PSD2, OBWG),
+      apiTagAccount :: apiTagPSD2PIIS :: apiTagNewStyle :: Nil)
 
     lazy val checkFundsAvailable : OBPEndpoint = {
       case "banks" :: BankId(bankId) :: "accounts" :: AccountId(accountId) :: ViewId(viewId) :: "funds-available" :: Nil JsonGet req => {
@@ -1129,7 +1129,7 @@ trait APIMethods310 {
         cc =>
           for {
             (user, callContext) <- authorizedAccess(cc)
-            _ <- validatePsd2Certificate(callContext)
+            _ <- passesPsd2Pisp(callContext)
             (_, callContext) <- NewStyle.function.getBank(bankId, callContext)
             (account, callContext) <- NewStyle.function.checkBankAccountExists(bankId, accountId, callContext)
             view <- NewStyle.function.view(viewId, BankIdAccountId(account.bankId, account.accountId), callContext)
@@ -1184,7 +1184,7 @@ trait APIMethods310 {
         UnknownError
       ),
       Catalogs(Core, PSD2, OBWG),
-      List(apiTagTransactionRequest, apiTagNewStyle))
+      List(apiTagTransactionRequest, apiTagPSD2PIS, apiTagNewStyle))
 
     lazy val getTransactionRequests: OBPEndpoint = {
       case "banks" :: BankId(bankId) :: "accounts" :: AccountId(accountId) :: ViewId(viewId) :: "transaction-requests" :: Nil JsonGet _ => {
@@ -3238,7 +3238,7 @@ trait APIMethods310 {
         UnknownError
       ),
       Catalogs(Core, PSD2, notOBWG),
-      List(apiTagApi))
+      List(apiTagApi, apiTagPSD2AIS))
 
     lazy val getServerJWK: OBPEndpoint = {
       case "certs" :: Nil JsonGet _ => {
@@ -3344,7 +3344,7 @@ trait APIMethods310 {
         UnknownError
       ),
       Catalogs(Core, PSD2, OBWG),
-      apiTagConsent :: apiTagNewStyle :: Nil)
+      apiTagConsent :: apiTagPSD2AIS :: apiTagNewStyle :: Nil)
 
     resourceDocs += ResourceDoc(
       createConsentSms,
@@ -3379,7 +3379,7 @@ trait APIMethods310 {
         UnknownError
       ),
       Catalogs(Core, PSD2, OBWG),
-      apiTagConsent :: apiTagNewStyle :: Nil)
+      apiTagConsent :: apiTagPSD2AIS ::apiTagNewStyle :: Nil)
 
     lazy val createConsentEmail = createConsent
     lazy val createConsentSms = createConsent
@@ -3485,7 +3485,7 @@ trait APIMethods310 {
         UnknownError
       ),
       Catalogs(Core, PSD2, OBWG),
-      apiTagConsent :: apiTagNewStyle :: Nil)
+      apiTagConsent :: apiTagPSD2AIS :: apiTagNewStyle :: Nil)
 
     lazy val answerConsentChallenge : OBPEndpoint = {
       case "banks" :: BankId(bankId) :: "consents"  :: consentId :: "challenge" :: Nil JsonPost json -> _  => {
@@ -3531,7 +3531,7 @@ trait APIMethods310 {
         UnknownError
       ),
       Catalogs(Core, PSD2, notOBWG),
-      List(apiTagConsent, apiTagNewStyle))
+      List(apiTagConsent, apiTagPSD2AIS, apiTagNewStyle))
 
     lazy val getConsents: OBPEndpoint = {
       case "banks" :: BankId(bankId) :: "my" :: "consents" :: Nil JsonGet _ => {
@@ -3571,7 +3571,7 @@ trait APIMethods310 {
         UnknownError
       ),
       Catalogs(Core, PSD2, notOBWG),
-      List(apiTagConsent, apiTagNewStyle))
+      List(apiTagConsent, apiTagPSD2AIS, apiTagNewStyle))
 
     lazy val revokeConsent: OBPEndpoint = {
       case "banks" :: BankId(bankId) :: "my" :: "consents" :: consentId :: "revoke" :: Nil JsonGet _ => {
@@ -5205,7 +5205,7 @@ trait APIMethods310 {
         TransactionDisabled,
         UnknownError
       ),
-      Catalogs(Core, PSD2, OBWG),
+      Catalogs(Core, notPSD2, OBWG),
       List(apiTagTransactionRequest),
       Some(List(canCreateHistoricalTransaction))
     )
@@ -5347,6 +5347,36 @@ trait APIMethods310 {
          |
          |* name is required String value
          |* value is required String value
+         |
+         |The line break and double quotations should do escape, example:
+         |
+         |```
+         |
+         |{"name": "webui_some", "value": "this value
+         |have "line break" and double quotations."}
+         |
+         |```
+         |should do escape like this:
+         |
+         |```
+         |
+         |{"name": "webui_some", "value": "this value\\nhave \\"line break\\" and double quotations."}
+         |
+         |```
+         |
+         |Insert image examples:
+         |
+         |```
+         |// set width=100 and height=50
+         |{"name": "webui_some_pic", "value": "here is a picture ![hello](http://somedomain.com/images/pic.png =100x50)"}
+         |
+         |// only set height=50
+         |{"name": "webui_some_pic", "value": "here is a picture ![hello](http://somedomain.com/images/pic.png =x50)"}
+         |
+         |// only width=20%
+         |{"name": "webui_some_pic", "value": "here is a picture ![hello](http://somedomain.com/images/pic.png =20%x)"}
+         |
+         |```
          |
          |""",
       WebUiPropsCommons("webui_api_explorer_url", "https://apiexplorer.openbankproject.com"),

@@ -33,6 +33,7 @@ import java.nio.charset.Charset
 import java.text.{ParsePosition, SimpleDateFormat}
 import java.util.{Date, UUID}
 
+import code.accountholders.AccountHolders
 import code.api.Constant._
 import code.api.OAuthHandshake._
 import code.api.builder.OBP_APIBuilder
@@ -42,6 +43,7 @@ import code.api.util.ApiTag.{ResourceDocTag, apiTagBank}
 import code.api.util.Glossary.GlossaryItem
 import code.api.v1_2.ErrorMessage
 import code.api.{DirectLogin, util, _}
+import code.bankconnectors.Connector
 import code.consumer.Consumers
 import code.customer.CustomerX
 import code.entitlement.Entitlement
@@ -49,6 +51,7 @@ import code.metrics._
 import code.model._
 import code.sanitycheck.SanityCheck
 import code.scope.Scope
+import code.usercustomerlinks.UserCustomerLink
 import code.util.Helper
 import code.util.Helper.{MdcLoggable, SILENCE_IS_GOLDEN}
 import com.openbankproject.commons.model.{Customer, _}
@@ -454,16 +457,17 @@ object APIUtil extends MdcLoggable with CustomJsonFormats{
   def oauthHeaderRequiredJsonResponse(implicit headers: CustomResponseHeaders = CustomResponseHeaders(Nil)) : JsonResponse =
     JsonResponse(Extraction.decompose(ErrorMessage(message = "Authentication via OAuth is required", code = 400)), getHeaders() ::: headers.list, Nil, 400)
 
+  lazy val CurrencyIsoCodeFromXmlFile: Elem = LiftRules.getResource("/media/xml/ISOCurrencyCodes.xml").map{ url =>
+    val input: InputStream = url.openStream()
+    val xml = XML.load(input)
+    if (input != null) input.close()
+    xml
+  }.openOrThrowException(s"$UnknownError,ISOCurrencyCodes.xml is missing in OBP server.  ")
+  
   /** check the currency ISO code from the ISOCurrencyCodes.xml file */
   def isValidCurrencyISOCode(currencyCode: String): Boolean = {
-    //just for initialization the Elem variable
-    var xml: Elem = <html/>
-    LiftRules.getResource("/media/xml/ISOCurrencyCodes.xml").map{ url =>
-      val input: InputStream = url.openStream()
-      xml = XML.load(input)
-    }
-    val stringArray = (xml \ "CcyTbl" \ "CcyNtry" \ "Ccy").map(_.text).mkString(" ").split("\\s+")
-    stringArray.contains(currencyCode)
+    val currencyIsoCodeArray = (CurrencyIsoCodeFromXmlFile \"CcyTbl" \ "CcyNtry" \ "Ccy").map(_.text).mkString(" ").split("\\s+")
+    currencyIsoCodeArray.contains(currencyCode)
   }
 
   /** Check the id values from GUI, such as ACCOUNT_ID, BANK_ID ...  */
@@ -1640,6 +1644,7 @@ Returns a string showed to the developer
         case ApiVersion.v2_2_0 => LiftRules.statelessDispatch.append(v2_2_0.OBPAPI2_2_0)
         case ApiVersion.v3_0_0 => LiftRules.statelessDispatch.append(v3_0_0.OBPAPI3_0_0)
         case ApiVersion.v3_1_0 => LiftRules.statelessDispatch.append(v3_1_0.OBPAPI3_1_0)
+        case ApiVersion.v4_0_0 => LiftRules.statelessDispatch.append(v4_0_0.OBPAPI4_0_0)
         case ApiVersion.`apiBuilder` => LiftRules.statelessDispatch.append(OBP_APIBuilder)
         case version: ScannedApiVersion => LiftRules.statelessDispatch.append(ScannedApis.versionMapScannedApis(version))
         case _ => logger.info(s"There is no ${version.toString}")
@@ -1905,7 +1910,10 @@ Returns a string showed to the developer
         case _ =>
           Future { (Failure(ErrorMessages.GatewayLoginUnknownError), None) }
       }
-    } else {
+    } else if(Option(cc).flatMap(_.user).isDefined) {
+      Future{(cc.user, Some(cc))}
+    }
+    else {
       Future { (Empty, None) }
     }
     // Update Call Context
@@ -2539,18 +2547,113 @@ Returns a string showed to the developer
     val parsePosition = new ParsePosition(0)
     currentSupportFormats.toStream.map(_.parse(date, parsePosition)).find(null !=)
   }
-
-  def validatePsd2Certificate(cc: Option[CallContext]): OBPReturnType[Box[Boolean]] = {
+  
+  private def passesPsd2ServiceProviderCommon(cc: Option[CallContext], serviceProvider: String) = {
     val result: Box[Boolean] = getPropsAsBoolValue("requirePsd2Certificates", false) match {
       case false => Full(true)
       case true =>
         `getPSD2-CERT`(cc.map(_.requestHeaders).getOrElse(Nil)) match {
-          case Some(pem) => X509.validate(pem)
+          case Some(pem) =>
+            val validatedPem = X509.validate(pem)
+            validatedPem match {
+              case Full(true) =>
+                val roles = X509.extractPsd2Roles(pem).map(_.exists(_ == serviceProvider))
+                roles match {
+                  case Full(true) => Full(true)
+                  case Full(false) => Failure(X509ActionIsNotAllowed)
+                  case _ => roles
+                }
+              case _ =>
+                validatedPem
+            }
           case None => Failure(X509CannotGetCertificate)
         }
     }
+    result
+  }
+
+  def passesPsd2ServiceProvider(cc: Option[CallContext], serviceProvider: String): OBPReturnType[Box[Boolean]] = {
+    val result = passesPsd2ServiceProviderCommon(cc, serviceProvider)
     Future(result) map {
       x => (fullBoxOrException(x ~> APIFailureNewStyle(X509GeneralError, 400, cc.map(_.toLight))), cc)
+    }
+  }
+  def passesPsd2Aisp(cc: Option[CallContext]): OBPReturnType[Box[Boolean]] = {
+    passesPsd2ServiceProvider(cc, PemCertificateRole.PSP_AI.toString())
+  }
+  def passesPsd2Pisp(cc: Option[CallContext]): OBPReturnType[Box[Boolean]] = {
+    passesPsd2ServiceProvider(cc, PemCertificateRole.PSP_PI.toString())
+  }
+  def passesPsd2Icsp(cc: Option[CallContext]): OBPReturnType[Box[Boolean]] = {
+    passesPsd2ServiceProvider(cc, PemCertificateRole.PSP_IC.toString())
+  }
+  def passesPsd2Assp(cc: Option[CallContext]): OBPReturnType[Box[Boolean]] = {
+    passesPsd2ServiceProvider(cc, PemCertificateRole.PSP_AS.toString())
+  }
+
+
+  def passesPsd2ServiceProviderOldStyle(cc: Option[CallContext], serviceProvider: String): Box[Boolean] = {
+    passesPsd2ServiceProviderCommon(cc, serviceProvider) ?~! X509GeneralError
+  }
+  def passesPsd2AispOldStyle(cc: Option[CallContext]): Box[Boolean] = {
+    passesPsd2ServiceProviderOldStyle(cc, PemCertificateRole.PSP_AI.toString())
+  }
+  def passesPsd2PispOldStyle(cc: Option[CallContext]): Box[Boolean] = {
+    passesPsd2ServiceProviderOldStyle(cc, PemCertificateRole.PSP_PI.toString())
+  }
+  def passesPsd2IcspOldStyle(cc: Option[CallContext]): Box[Boolean] = {
+    passesPsd2ServiceProviderOldStyle(cc, PemCertificateRole.PSP_IC.toString())
+  }
+  def passesPsd2AsspOldStyle(cc: Option[CallContext]): Box[Boolean] = {
+    passesPsd2ServiceProviderOldStyle(cc, PemCertificateRole.PSP_AS.toString())
+  }
+  
+  
+  
+  def getMaskedPrimaryAccountNumber(accountNumber: String): String = {
+    val (first, second) = accountNumber.splitAt(accountNumber.size/2)
+    if(first.length >=3 && second.length>=3)
+      first.substring(0, first.size - 3) + "***" + "***" + second.substring(3)
+    else if (first.length >=3 && second.length< 3)
+      first.substring(0, first.size - 3) + "***" + "***" + second
+    else if (first.length <3 && second.length>= 3)
+      first + "***" + "***" + second.substring(3)
+    else
+      first+ "***" + "***" + second
+  }
+
+  /**
+    * This endpoint returns BIC on an bank according to next rules:
+    * 1st try - Inspect bank routing
+    * 2nd ry - get deprecated field "swiftBic"
+    * @param bankId The BANK_ID specified at an endpoint's path
+    * @return BIC of the Bank
+    */
+  def getBicFromBankId(bankId: String)= {
+      Connector.connector.vend.getBankLegacy(BankId(bankId), None) match {
+      case Full((bank, _)) =>
+        bank.bankRoutingScheme match {
+          case "BIC" => bank.bankRoutingAddress
+          case _ => bank.swiftBic
+        }
+      case _ => ""
+    }
+  }
+
+  /**
+    * This function finds a phone number of an Customer in accordance to next rule:
+    * - account -> holders -> User -> User Customer Links -> Customer.phone_number
+    * @param bankId The BANK_ID
+    * @param accountId The ACCOUNT_ID
+    * @return The phone number of a Customer
+    */
+  def getPhoneNumbersForAccount(bankId: BankId, accountId: AccountId): List[(String, String)] = {
+    for{
+      holder <- AccountHolders.accountHolders.vend.getAccountHolders(bankId, accountId).toList
+      userCustomerLink <- UserCustomerLink.userCustomerLink.vend.getUserCustomerLinksByUserId(holder.userId)
+      customer <- CustomerX.customerProvider.vend.getCustomerByCustomerId(userCustomerLink.customerId)
+    } yield {
+      (customer.legalName, customer.mobileNumber)
     }
   }
   
