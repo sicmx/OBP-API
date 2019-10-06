@@ -444,14 +444,14 @@ class Boot extends MdcLoggable {
     LiftRules.explicitlyParsedSuffixes = Helpers.knownSuffixes &~ (Set("com"))
 
     //set base localization to english (instead of computer default)
-    Locale.setDefault(Locale.ENGLISH)
+    //Locale.setDefault(Locale.ENGLISH)
     logger.info("Current Project Locale is :" +Locale.getDefault)
 
     //override locale calculated from client request with default (until we have translations)
-    LiftRules.localeCalculator = {
-      case fullReq @ Full(req) => Locale.ENGLISH
-      case _ => Locale.ENGLISH
-    }
+    //LiftRules.localeCalculator = {
+    //  case fullReq @ Full(req) => Locale.ENGLISH
+    //  case _ => Locale.ENGLISH
+    //}
 
     //for XSS vulnerability, set X-Frame-Options header as DENY
     LiftRules.supplementalHeaders.default.set(List(("X-Frame-Options", "DENY")))
