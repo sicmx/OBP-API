@@ -392,31 +392,65 @@ class Boot extends MdcLoggable {
     logger.info (s"props_identifier is : ${APIUtil.getPropsValue("props_identifier", "NONE-SET")}")
 
 
-    // Build SiteMap
-    val indexPage = APIUtil.getPropsValue("server_mode", "apis,portal") match {
-      case mode if mode == "portal" => List(Menu.i("Home") / "index")
-      case mode if mode == "apis" => List()
-      case mode if mode.contains("apis") && mode.contains("portal") => List(Menu.i("Home") / "index")
-      case _ => List(Menu.i("Home") / "index")
+    if (Locale.getDefault == Locale.ENGLISH) {
+
+      // Build SiteMap
+      val indexPage = APIUtil.getPropsValue("server_mode", "apis,portal") match {
+        case mode if mode == "portal" => List(Menu.i("Home") / "index")
+        case mode if mode == "apis" => List()
+        case mode if mode.contains("apis") && mode.contains("portal") => List(Menu.i("Home") / "index")
+        case _ => List(Menu.i("Home") / "index")
+      }
+
+      val sitemap = indexPage ::: List(
+        Menu.i("Plain") / "plain",
+        Menu.i("Consumer Admin") / "admin" / "consumers" >> Admin.loginFirst >> LocGroup("admin")
+          submenus (Consumer.menus: _*),
+        Menu("Consumer Registration", "Get API Key") / "consumer-registration" >> AuthUser.loginFirst,
+
+        Menu("Validate OTP", "Validate OTP") / "otp" >> AuthUser.loginFirst,
+        // Menu.i("Metrics") / "metrics", //TODO: allow this page once we can make the account number anonymous in the URL
+        Menu.i("OAuth") / "oauth" / "authorize", //OAuth authorization page
+        OAuthWorkedThanks.menu, //OAuth thanks page that will do the redirect
+        Menu.i("INTRODUCTION") / "introduction"
+      ) ++ accountCreation ++ Admin.menus
+
+      def sitemapMutators = AuthUser.sitemapMutator
+
+      // set the sitemap.  Note if you don't want access control for
+      // each page, just comment this line out.
+      LiftRules.setSiteMapFunc(() => sitemapMutators(SiteMap(sitemap : _*)))
+
+    } else {
+
+      // Build SiteMap
+      val indexPage = APIUtil.getPropsValue("server_mode", "apis,portal") match {
+        case mode if mode == "portal" => List(Menu.i("Inicio") / "index")
+        case mode if mode == "apis" => List()
+        case mode if mode.contains("apis") && mode.contains("portal") => List(Menu.i("Inicio") / "index")
+        case _ => List(Menu.i("Inicio") / "index")
+      }
+
+      val sitemap = indexPage ::: List(
+        Menu.i("Plain") / "plain",
+        Menu.i("Consumer Admin") / "admin" / "consumers" >> Admin.loginFirst >> LocGroup("admin")
+          submenus (Consumer.menus: _*),
+        Menu("Consumer Registration", "Obtener Llave de la API") / "consumer-registration" >> AuthUser.loginFirst,
+
+        Menu("Validate OTP", "Validar OTP") / "otp" >> AuthUser.loginFirst,
+        // Menu.i("Metrics") / "metrics", //TODO: allow this page once we can make the account number anonymous in the URL
+        Menu.i("OAuth") / "oauth" / "authorize", //OAuth authorization page
+        OAuthWorkedThanks.menu, //OAuth thanks page that will do the redirect
+        Menu.i("INTRODUCTION") / "introduction"
+      ) ++ accountCreation ++ Admin.menus
+
+      def sitemapMutators = AuthUser.sitemapMutator
+
+      // set the sitemap.  Note if you don't want access control for
+      // each page, just comment this line out.
+      LiftRules.setSiteMapFunc(() => sitemapMutators(SiteMap(sitemap : _*)))
     }
-    val sitemap = indexPage ::: List(
-          Menu.i("Plain") / "plain",
-          Menu.i("Consumer Admin") / "admin" / "consumers" >> Admin.loginFirst >> LocGroup("admin")
-          	submenus(Consumer.menus : _*),
-          Menu("Consumer Registration", "Get API Key") / "consumer-registration" >> AuthUser.loginFirst,
 
-          Menu("Validate OTP", "Validate OTP") / "otp" >> AuthUser.loginFirst,
-          // Menu.i("Metrics") / "metrics", //TODO: allow this page once we can make the account number anonymous in the URL
-          Menu.i("OAuth") / "oauth" / "authorize", //OAuth authorization page
-          OAuthWorkedThanks.menu, //OAuth thanks page that will do the redirect
-          Menu.i("INTRODUCTION") / "introduction"
-    ) ++ accountCreation ++ Admin.menus
-
-    def sitemapMutators = AuthUser.sitemapMutator
-
-    // set the sitemap.  Note if you don't want access control for
-    // each page, just comment this line out.
-    LiftRules.setSiteMapFunc(() => sitemapMutators(SiteMap(sitemap : _*)))
     // Use jQuery 1.4
     LiftRules.jsArtifacts = net.liftweb.http.js.jquery.JQueryArtifacts
 
@@ -452,6 +486,9 @@ class Boot extends MdcLoggable {
     //  case fullReq @ Full(req) => Locale.ENGLISH
     //  case _ => Locale.ENGLISH
     //}
+
+    //add resourcesNames
+    LiftRules.resourceNames = "default" :: Nil
 
     //for XSS vulnerability, set X-Frame-Options header as DENY
     LiftRules.supplementalHeaders.default.set(List(("X-Frame-Options", "DENY")))
